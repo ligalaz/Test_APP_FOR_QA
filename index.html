@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Список постов с багами</title>
+    <!-- Materialize CSS -->
+    <link
+      href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css"
+      rel="stylesheet"
+    />
+    <!-- Material Icons -->
+    <link
+      href="https://fonts.googleapis.com/icon?family=Material+Icons"
+      rel="stylesheet"
+    />
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+      body.dark-theme,
+      .dark-theme .modal-content {
+        background: #222 !important;
+        color: #f4f4f4 !important;
+      }
+      .dark-theme .input-field input,
+      .dark-theme .input-field textarea {
+        color: #f4f4f4 !important;
+        border-bottom: 1px solid #90caf9 !important;
+        background: #333 !important;
+      }
+      .dark-theme .input-field label {
+        color: #90caf9 !important;
+      }
+      .dark-theme .pagination li.active {
+        background: #90caf9 !important;
+      }
+      .pointer {
+        cursor: pointer;
+      }
+      .modal {
+        max-height: 90vh;
+      }
+      .comment-body textarea {
+        background: #f5f5f5;
+      }
+      .dark-theme .comment-body textarea {
+        background: #444;
+        color: #eee;
+      }
+      .container {
+        min-width: 98vw;
+        margin-top: 32px;
+        margin-bottom: 32px;
+        padding-left: 2cm !important;
+        padding-right: 2cm !important;
+      }
+      .pagination {
+        user-select: none;
+      }
+      .pagination li {
+        min-width: 36px;
+      }
+      .modal {
+        border-radius: 12px;
+      }
+      .modal-header {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: inherit;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px 24px 16px 24px;
+        margin-bottom: 16px;
+        border-bottom: 1px solid #e0e0e0;
+      }
+      .dark-theme .modal-header {
+        border-bottom: 1px solid #444;
+        background: #222;
+      }
+      .modal-header-title {
+        font-size: 1.5rem;
+        font-weight: 500;
+        line-height: 1.2;
+        flex: 1 1 auto;
+        word-break: break-word;
+        margin-bottom: 0;
+        margin-right: 24px;
+      }
+      .modal-header .modal-close {
+        margin-left: 8px;
+        color: #888;
+        transition: color 0.2s;
+      }
+      .modal-header .modal-close:hover {
+        color: #222;
+      }
+      .dark-theme .modal-header .modal-close:hover {
+        color: #fff;
+      }
+      @media (max-width: 600px) {
+        .container {
+          padding: 0 4px !important;
+        }
+        .modal {
+          width: 98vw !important;
+        }
+        .modal-header-title {
+          font-size: 1.1rem;
+        }
+        .modal-header {
+          padding: 12px 8px 12px 8px;
+        }
+      }
+      .modal-footer {
+        border-top: none;
+        background: transparent;
+        margin-top: 24px;
+        padding: 0;
+        text-align: right;
+        position: sticky;
+        bottom: 0;
+        z-index: 10;
+        background: inherit;
+      }
+      .modal-footer .btn,
+      .modal-footer .btn-flat {
+        margin-left: 8px;
+      }
+      .modal-content {
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        overflow-y: auto;
+        max-height: 60vh;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script type="module">
+      import {
+        createApp,
+        ref,
+        computed,
+        onMounted,
+        nextTick,
+      } from "https://unpkg.com/vue@3/dist/vue.esm-browser.prod.js";
+
+      createApp({
+        setup() {
+          const posts = ref([]);
+          const loading = ref(false);
+          const page = ref(1);
+          const limit = ref(10);
+          const total = ref(0);
+          const isDarkTheme = ref(false);
+
+          const search = ref("");
+
+          const showPostModal = ref(false);
+          const modalLoading = ref(false);
+          const commentsLoading = ref(false);
+          const currentPost = ref({});
+          const postAuthor = ref({});
+          const comments = ref([]);
+
+          const editMode = ref(false);
+          const editTitle = ref("");
+          const editBody = ref("");
+          const originalTitle = ref("");
+          const originalBody = ref("");
+          const likesCount = ref(10);
+          const isChanged = computed(
+            () =>
+              editTitle.value !== originalTitle.value ||
+              editBody.value !== originalBody.value,
+          );
+
+          const skip = computed(() => (page.value - 1) * limit.value);
+          const totalPages = computed(() =>
+            Math.ceil(total.value / limit.value),
+          );
+
+          const filteredPosts = computed(() => {
+            if (!search.value.trim()) return posts.value;
+            const q = search.value.trim().toLowerCase();
+            return posts.value.filter(
+              (p) =>
+                p.title.toLowerCase().includes(q) ||
+                p.body.toLowerCase().includes(q),
+            );
+          });
+
+          function paginationPages(current, total) {
+            const delta = 2;
+            const range = [];
+            const rangeWithDots = [];
+            let l;
+            for (let i = 1; i <= total; i++) {
+              if (
+                i === 1 ||
+                i === total ||
+                (i >= current - delta && i <= current + delta)
+              ) {
+                range.push(i);
+              }
+            }
+            for (let i of range) {
+              if (l) {
+                if (i - l === 2) {
+                  rangeWithDots.push(l + 1);
+                } else if (i - l !== 1) {
+                  rangeWithDots.push("...");
+                }
+              }
+              rangeWithDots.push(i);
+              l = i;
+            }
+            return rangeWithDots;
+          }
+
+          async function fetchPosts() {
+            loading.value = true;
+            try {
+              const res = await fetch(
+                `https://dummyjson.com/posts?limit=${limit.value}&skip=${skip.value}`,
+              );
+              const data = await res.json();
+              posts.value = data.posts.map((post) => {
+                const ss = sessionStorage.getItem("post_" + post.id);
+                if (ss) {
+                  try {
+                    const data = JSON.parse(ss);
+                    return { ...post, ...data };
+                  } catch {}
+                }
+                return post;
+              });
+              total.value = data.total;
+            } catch (e) {
+              posts.value = [];
+            } finally {
+              loading.value = false;
+            }
+          }
+
+          onMounted(() => {
+            fetchPosts();
+          });
+
+          function truncateBody(body) {
+            const maxLength = 100;
+            return body.length > maxLength
+              ? body.slice(0, maxLength) + "..."
+              : body;
+          }
+
+          function goToPage(p) {
+            if (p < 1 || p > totalPages.value || p === "...") return;
+            page.value = p;
+            fetchPosts();
+          }
+          function nextPage() {
+            goToPage(page.value + 1);
+          }
+          function prevPage() {
+            goToPage(page.value - 1);
+          }
+
+          function toggleTheme() {
+            isDarkTheme.value = !isDarkTheme.value;
+            document.body.classList.toggle("dark-theme", isDarkTheme.value);
+          }
+
+          async function openPostModal(postId) {
+            showPostModal.value = true;
+            modalLoading.value = true;
+            commentsLoading.value = true;
+            currentPost.value = {};
+            likesCount.value = 0;
+            postAuthor.value = {};
+            comments.value = [];
+            editMode.value = false;
+            await nextTick();
+            const modal = document.getElementById("post-modal");
+            if (window.M && modal) {
+              M.Modal.init(modal, { endingTop: "5%" });
+              var inst = M.Modal.getInstance(modal);
+              inst.open();
+            }
+            try {
+              const postRes = await fetch(
+                `https://dummyjson.com/posts/${postId}`,
+              );
+              let postData = await postRes.json();
+              const ss = sessionStorage.getItem("post_" + postData.id);
+              if (ss) {
+                try {
+                  postData = { ...postData, ...JSON.parse(ss) };
+                } catch {}
+              }
+              currentPost.value = postData;
+              editTitle.value = postData.title;
+              editBody.value = postData.body;
+              originalTitle.value = postData.title;
+              originalBody.value = postData.body;
+              likesCount.value = postData.reactions.likes;
+
+              console.log(postData.reactions.likes);
+
+              const userRes = await fetch(
+                `https://dummyjson.com/users/${currentPost.value.userId}`,
+              );
+              postAuthor.value = await userRes.json();
+
+              const commentsRes = await fetch(
+                `https://dummyjson.com/posts/${postId}/comments`,
+              );
+              const commentsData = await commentsRes.json();
+              comments.value = commentsData.comments;
+            } catch (e) {
+            } finally {
+              modalLoading.value = false;
+              commentsLoading.value = false;
+              setTimeout(() => {
+                var elems = document.querySelectorAll(".collapsible");
+                window.M && M.Collapsible.init(elems);
+              }, 100);
+            }
+          }
+          function closePostModal() {
+            showPostModal.value = false;
+            currentPost.value = {};
+            postAuthor.value = {};
+            comments.value = [];
+            editMode.value = false;
+          }
+
+          function increaseLikes() {
+            likesCount.value++;
+          }
+
+          function decreaseLikes() {
+            if (likesCount.value > 0) likesCount.value--;
+          }
+
+          function enableEdit() {
+            editMode.value = true;
+          }
+          function onEdit() {}
+          function cancelEdit() {
+            editMode.value = false;
+            editTitle.value = originalTitle.value;
+            editBody.value = originalBody.value;
+          }
+
+          async function saveEdit() {
+            if (!isChanged.value) return;
+            try {
+              const res = await fetch(
+                `https://dummyjson.com/posts/${currentPost.value.id}`,
+                {
+                  method: "PATCH",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    title: editTitle.value,
+                    body: editBody.value,
+                  }),
+                },
+              );
+              const data = await res.json();
+              sessionStorage.setItem("post_" + data.id, JSON.stringify(data));
+              const idx = posts.value.findIndex((p) => p.id === data.id);
+              if (idx !== -1) {
+                posts.value[idx] = {
+                  ...posts.value[idx],
+                  body: data.body,
+                  reactions: posts.value[idx].reactions,
+                };
+              }
+              currentPost.value = { ...currentPost.value, ...data };
+              originalTitle.value = data.title;
+              originalBody.value = data.body;
+              editMode.value = false;
+            } catch (e) {
+              alert("Ошибка сохранения!");
+            }
+          }
+
+          return {
+            posts,
+            loading,
+            page,
+            limit,
+            total,
+            isDarkTheme,
+            search,
+            filteredPosts,
+            totalPages,
+            paginationPages,
+            truncateBody,
+            goToPage,
+            nextPage,
+            prevPage,
+            toggleTheme,
+            showPostModal,
+            openPostModal,
+            closePostModal,
+            modalLoading,
+            currentPost,
+            postAuthor,
+            comments,
+            commentsLoading,
+            editMode,
+            editTitle,
+            editBody,
+            isChanged,
+            enableEdit,
+            onEdit,
+            cancelEdit,
+            saveEdit,
+            likesCount,
+            increaseLikes,
+            decreaseLikes,
+          };
+        },
+        template: `
+      <div class="container" :class="{ 'dark-theme': isDarkTheme }">
+        <div class="row" style="margin-bottom:0">
+          <div class="col s12 m6">
+            <button class="btn blue" @click="toggleTheme" style="margin:10px 0;">
+              {{ isDarkTheme ? 'Светлая тема' : 'Тёмная тема' }}
+            </button>
+          </div>
+          <div class="col s12 m6">
+            <div class="input-field" style="margin-top:0;">
+              <input id="search" type="search" v-model="search" placeholder="Поиск по заголовку или тексту" />
+              <label for="search">Поиск</label>
+            </div>
+          </div>
+        </div>
+        <h4>Список постов</h4>
+        <div v-if="loading" class="progress"><div class="indeterminate"></div></div>
+        <div v-else-if="filteredPosts.length === 0" class="card-panel yellow lighten-4">Посты не найдены</div>
+        <div v-else>
+          <table class="highlight responsive-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Заголовок</th>
+                <th>Тело поста</th>
+                <th>User ID</th>
+                <th>👍</th>
+                <th>👎</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="post in filteredPosts"
+                :key="post.id"
+                @click="openPostModal(post.id)"
+                class="pointer"
+              >
+                <td>{{ post.userId }}</td>
+                <td>{{ post.title }}</td>
+                <td>{{ truncateBody(post.body) }}</td>
+                <td>{{ post.id }}</td>
+                <td>{{ post.reactions.dislikes }}</td>
+                <td>{{ post.reactions.likes }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <ul class="pagination center-align" style="margin-top:30px;">
+            <li>
+              <a href="#!" @click.prevent="prevPage"><i class="material-icons">chevron_left</i></a>
+            </li>
+            <li
+              v-for="p in paginationPages(page, totalPages)"
+              :key="p"
+              :class="[{ active: p === page }, p === '...' ? 'disabled' : 'wavesEffect']"
+            >
+              <a href="#!" v-if="p !== '...'" @click.prevent="goToPage(p)">{{ p }}</a>
+              <span v-else style="padding: 0 10px;">{{ p }}</span>
+            </li>
+            <li :class="{ disabled: page === totalPages }">
+              <a href="#!" @click.prevent="nextPage+1"><i class="material-icons">chevron_right</i></a>
+            </li>
+          </ul>
+        </div>
+
+        <div id="post-modal" class="modal" :class="{ 'dark-theme': isDarkTheme }" v-if="showPostModal">
+          <div class="modal-header">
+            <span class="modal-header-title">{{ editTitle || 'Без заголовка' }}</span>
+            <a href="#!" class="modal-close right" @click="closePostModal">
+              <i class="material-icons">close</i>
+            </a>
+          </div>
+          <div class="modal-content" style="padding-top:0;">
+            <div v-if="modalLoading">
+              <div class="progress"><div class="indeterminate"></div></div>
+              <div>Загрузка данных поста...</div>
+            </div>
+            <div v-else-if="!currentPost.id">Ошибка загрузки поста.</div>
+            <div v-else>
+              <div class="input-field modal-field" style="margin-top:0;">
+                <input
+                  type="text"
+                  v-model="editTitle"
+                  :disabled="!editMode"
+                  @input="onEdit"
+                  style="font-weight:500;"
+                />
+                <label class="active" style="display:none;">Заголовок поста</label>
+              </div>
+              <div class="input-field modal-field">
+                <textarea
+                  v-model="editBody"
+                  class="materialize-textarea"
+                  rows="7"
+                  :disabled="!editMode"
+                  @input="onEdit"
+                ></textarea>
+                <label class="active">Полное тело поста</label>
+              </div>
+              <div class="input-field modal-field">
+                <input
+                  type="text"
+                  :value="postAuthor.firstName + ' ' + postAuthor.lastName"
+                  disabled
+                />
+                <label class="active">ФИО пользователя</label>
+              </div>
+              <div class="input-field modal-field">
+                <input
+                  type="text"
+                  :value="postAuthor.company ? postAuthor.company.title : ''"
+                  disabled
+                />
+                <label class="active">Должность</label>
+              </div>
+              <div class="input-field modal-field">
+                <input
+                  type="text"
+                  :value="postAuthor.company ? postAuthor.company.department : ''"
+                  disabled
+                />
+                <label class="active">Отдел</label>
+              </div>
+              <div class="input-field modal-field">
+                <input
+                  type="text"
+                  :value="currentPost.tags ? currentPost.tags.join(', ') : ''"
+                  disabled
+                />
+                <label class="active">Теги поста</label>
+              </div>
+<div class="input-field modal-field" style="display: flex; align-items: center; gap: 12px;">
+  <input type="text" :value="likesCount ?? 0" disabled style="width: 60px;" />
+  <label class="active" style="margin-right: 8px;">Лайки</label>
+  <button class="btn-small waves-effect waves-light" type="button" @click="increaseLikes" style="min-width: 40px;">
+    <i class="material-icons">thumb_up</i>
+  </button>
+</div>
+
+<div class="input-field modal-field" style="display: flex; align-items: center; gap: 12px;">
+  <input type="text" :value="currentPost.reactions?.dislikes ?? 0" disabled style="width: 60px;" />
+  <label class="active" style="margin-right: 8px;">Дизлайки</label>
+  <button class="btn-small waves-effect waves-light red lighten-1" type="button" @click="decreaseLikes" style="min-width: 40px;">
+    <i class="material-icons">thumb_down</i>
+  </button>
+</div>
+
+
+              <ul class="collapsible">
+                <li>
+                  <div class="collapsible-header">
+                    <i class="material-icons">comment</i>
+                    Комментарии ({{ comments.length }})
+                  </div>
+                  <div class="collapsible-body">
+                    <div v-if="commentsLoading">
+                      <div class="progress"><div class="indeterminate"></div></div>
+                      <div>Загрузка комментариев...</div>
+                    </div>
+                    <div v-else-if="comments.length === 0">
+                      Нет комментариев к этому посту.
+                    </div>
+                    <div v-else class="comments-list">
+                      <div v-for="comment in comments" :key="comment.id" class="comment-item">
+                        <div class="input-field comment-body">
+                          <textarea :value="comment.body" class="materialize-textarea" rows="2" disabled></textarea>
+                          <label class="active">Комментарий</label>
+                        </div>
+                        <div class="input-field comment-author">
+                          <input type="text" :value="comment.user.username" disabled />
+                          <label class="active">Логин пользователя</label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button v-if="!editMode" class="btn orange" @click="enableEdit">Редактировать</button>
+            <button v-if="editMode && isChanged" class="btn green" @click="saveEdit">Сохранить</button>
+            <button v-if="editMode" class="btn-flat" @click="cancelEdit">Отмена</button>
+          </div>
+        </div>
+      </div>
+      `,
+      }).mount("#app");
+    </script>
+  </body>
+</html>
