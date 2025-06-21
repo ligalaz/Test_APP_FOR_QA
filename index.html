@@ -53,6 +53,12 @@
         padding-left: 2cm !important;
         padding-right: 2cm !important;
       }
+
+      @-moz-document url-prefix() {
+        .title_big {
+          color: #fff !important;
+        }
+      }
       .pagination {
         user-select: none;
       }
@@ -441,7 +447,7 @@
             </div>
           </div>
         </div>
-        <h4>Список постов</h4>
+        <h4 class="title_big">Список постов</h4>
         <div v-if="loading" class="progress"><div class="indeterminate"></div></div>
         <div v-else-if="filteredPosts.length === 0" class="card-panel yellow lighten-4">Посты не найдены</div>
         <div v-else>
